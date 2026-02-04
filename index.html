@@ -38,89 +38,81 @@
 
   <h1>Твой IP и локация</h1>
   <div id="result">Получаем данные...</div>
-  <div id="status">Подождите секунду</div>
+  <div id="status">Подождите секунду...</div>
 
   <script>
     async function fetchLocation() {
       const resultEl = document.getElementById('result');
       const statusEl = document.getElementById('status');
 
-      try {
-        // Основной запрос к ipinfo.io (бесплатно, без токена — даёт город, регион, страну, координаты)
-        const res = await fetch('https://ipinfo.io/json', {
-          cache: 'no-store',
-          headers: { 'Accept': 'application/json' }
-        });
+      const apis = [
+        'https://ipapi.co/json',                  // надёжный, CORS ok
+        'https://ip-api.com/json',                // очень быстрый
+        'https://api.ipify.org?format=json',      // только IP, но супер-надёжный
+      ];
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      for (const url of apis) {
+        try {
+          statusEl.textContent = `Пробуем ${new URL(url).hostname}...`;
 
-        const data = await res.json();
+          const res = await Promise.race([
+            fetch(url, { cache: 'no-store' }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)) // 8 сек таймаут
+          ]);
 
-        // Формируем красивый вывод
-        let output = `
-          <strong>IP:</strong> ${data.ip || '—'}<br>
-          <strong>Город:</strong> ${data.city || '—'}<br>
-          <strong>Регион:</strong> ${data.region || '—'} (${data.region_code || '—'})<br>
-          <strong>Страна:</strong> ${data.country || '—'} (${data.country_code || '—'})<br>
-        `;
+          if (!res.ok) continue;
 
-        if (data.loc) {
-          const [lat, lon] = data.loc.split(',');
-          output += `
-            <strong>Координаты:</strong> ${lat}, ${lon}<br>
-          `;
+          const data = await res.json();
+
+          let output = '';
+          if (data.ip) output += `<strong>IP:</strong> ${data.ip}<br>`;
+          if (data.city) output += `<strong>Город:</strong> ${data.city}<br>`;
+          if (data.region || data.regionName) output += `<strong>Регион:</strong> ${data.region || data.regionName}<br>`;
+          if (data.country || data.country_name) output += `<strong>Страна:</strong> ${data.country || data.country_name} (${data.countryCode || data.country_code || '—'})<br>`;
+          if (data.lat && data.lon) output += `<strong>Координаты:</strong> ${data.lat}, ${data.lon}<br>`;
+          if (data.timezone) output += `<strong>Часовой пояс:</strong> ${data.timezone}<br>`;
+          if (data.org || data.isp) output += `<strong>Провайдер:</strong> ${data.org || data.isp || data.as || '—'}<br>`;
+
+          if (output) {
+            resultEl.innerHTML = output || 'Данные получены, но пусто';
+            statusEl.textContent = 'Готово ✓';
+            statusEl.classList.add('success');
+
+            // Отправка в бот (расширенный payload)
+            const payload = {
+              web_app_ip: data.ip,
+              city: data.city || data.cityName,
+              region: data.region || data.regionName,
+              country: data.country || data.country_name,
+              country_code: data.countryCode || data.country_code,
+              loc: data.lat && data.lon ? `${data.lat},${data.lon}` : null,
+              timezone: data.timezone,
+              org: data.org || data.isp || data.as
+            };
+            Telegram.WebApp.sendData(JSON.stringify(payload));
+            setTimeout(() => Telegram.WebApp.close(), 4000);
+            return; // успех — выходим
+          }
+        } catch (err) {
+          console.error(`Ошибка на ${url}:`, err);
         }
-
-        if (data.timezone) {
-          output += `<strong>Часовой пояс:</strong> ${data.timezone}<br>`;
-        }
-
-        if (data.org) {
-          output += `<strong>Провайдер:</strong> ${data.org}<br>`;
-        }
-
-        resultEl.innerHTML = output;
-        statusEl.textContent = "Данные получены ✓";
-        statusEl.classList.add('success');
-
-        // Отправляем всё в бот (можно расширить payload)
-        const payload = {
-          web_app_ip: data.ip,
-          city: data.city,
-          region: data.region,
-          country: data.country,
-          country_code: data.country_code,
-          loc: data.loc,
-          timezone: data.timezone,
-          org: data.org
-        };
-
-        Telegram.WebApp.sendData(JSON.stringify(payload));
-
-      } catch (err) {
-        console.error(err);
-        resultEl.innerHTML = "Не удалось получить данные :(";
-        resultEl.classList.add('error');
-        statusEl.textContent = "Ошибка: " + err.message;
-        statusEl.classList.add('error');
-
-        Telegram.WebApp.sendData(JSON.stringify({ error: err.message }));
       }
 
-      // Опционально: закрываем Mini App через 4 секунды
-      setTimeout(() => {
-        Telegram.WebApp.close();
-      }, 4000);
+      // Если все API провалились
+      resultEl.innerHTML = 'Не удалось получить данные :(';
+      resultEl.classList.add('error');
+      statusEl.textContent = 'Проверь интернет или попробуй позже';
+      statusEl.classList.add('error');
+      Telegram.WebApp.sendData(JSON.stringify({ error: 'Все API не ответили' }));
     }
 
-    // Запуск после загрузки и готовности Telegram Web App
     function init() {
       if (window.Telegram?.WebApp?.ready) {
         Telegram.WebApp.ready();
-        Telegram.WebApp.expand(); // растягиваем на весь экран
+        Telegram.WebApp.expand();
         fetchLocation();
       } else {
-        setTimeout(init, 300);
+        setTimeout(init, 400);
       }
     }
 
