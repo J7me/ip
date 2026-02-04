@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Получение IP</title>
+  <title>Мой IP</title>
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -12,120 +12,76 @@
       padding: 20px;
       color: #333;
       text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 100vh;
     }
-    h1 {
-      color: #0088cc;
+    h1 { color: #0088cc; margin-bottom: 10px; }
+    #ip { 
+      font-size: 1.8em; 
+      font-weight: bold; 
+      background: white; 
+      padding: 15px; 
+      border-radius: 12px; 
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin: 20px auto;
+      max-width: 300px;
     }
-    #status {
-      margin-top: 30px;
-      font-size: 1.1em;
-      color: #555;
-    }
-    .spinner {
-      margin: 40px auto;
-      width: 50px;
-      height: 50px;
-      border: 5px solid #ddd;
-      border-top: 5px solid #0088cc;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
+    #status { font-size: 1.1em; color: #555; }
+    .error { color: #d32f2f; }
   </style>
 </head>
 <body>
 
-  <h1>Получаем ваш IP...</h1>
-  <div class="spinner" id="spinner"></div>
-  <div id="status">Подождите пару секунд</div>
+  <h1>Твой IP-адрес</h1>
+  <div id="ip">Получаем...</div>
+  <div id="status"></div>
 
   <script>
-    // Пытаемся получить IP и сразу отправить
-    async function getAndSendIP() {
+    async function fetchIP() {
+      const ipEl = document.getElementById('ip');
       const status = document.getElementById('status');
-      const spinner = document.getElementById('spinner');
 
-      try {
-        // Можно использовать несколько сервисов на случай, если один не работает
-        const services = [
-          "https://api.ipify.org?format=json",
-          "https://api64.ipify.org?format=json",
-          "https://cloudflare.com/cdn-cgi/trace"   // запасной вариант
-        ];
+      const services = [
+        "https://api.ipify.org?format=json",
+        "https://api64.ipify.org?format=json",
+        "https://cloudflare.com/cdn-cgi/trace"
+      ];
 
-        let ip = null;
-
-        // Пробуем основной сервис
+      for (const url of services) {
         try {
-          const res = await fetch(services[0], { cache: 'no-store' });
-          if (res.ok) {
+          const res = await fetch(url, { cache: 'no-store' });
+          if (!res.ok) continue;
+
+          if (url.includes('ipify')) {
             const data = await res.json();
-            ip = data.ip;
+            ipEl.textContent = data.ip;
+          } else {
+            // cloudflare trace
+            const text = await res.text();
+            const match = text.match(/ip=(.+)/);
+            if (match) ipEl.textContent = match[1];
           }
+
+          status.textContent = "Готово ✓";
+          return; // успех — выходим
         } catch {}
-
-        // Если не получилось — пробуем второй
-        if (!ip) {
-          try {
-            const res = await fetch(services[1], { cache: 'no-store' });
-            if (res.ok) {
-              const data = await res.json();
-              ip = data.ip;
-            }
-          } catch {}
-        }
-
-        // Если всё ещё нет — самый надёжный запасной (cloudflare trace)
-        if (!ip) {
-          try {
-            const res = await fetch(services[2], { cache: 'no-store' });
-            if (res.ok) {
-              const text = await res.text();
-              const match = text.match(/ip=(.+)/);
-              if (match) ip = match[1];
-            }
-          } catch {}
-        }
-
-        if (ip) {
-          // Отправляем в бот
-          Telegram.WebApp.sendData(JSON.stringify({ web_app_ip: ip }));
-          status.textContent = "IP получен и отправлен ✓";
-        } else {
-          Telegram.WebApp.sendData(JSON.stringify({ error: "не удалось получить IP" }));
-          status.textContent = "Не удалось определить IP :(";
-        }
-
-      } catch (err) {
-        console.error(err);
-        Telegram.WebApp.sendData(JSON.stringify({ error: "ошибка: " + err.message }));
-        status.textContent = "Произошла ошибка";
       }
 
-      // Скрываем спиннер
-      spinner.style.display = 'none';
-
-      // Через 2 секунды закрываем приложение (можно убрать, если хочешь оставить открытым)
-      setTimeout(() => {
-        Telegram.WebApp.close();
-      }, 2200);
+      ipEl.textContent = "Не удалось получить";
+      ipEl.classList.add('error');
+      status.textContent = "Попробуй позже или проверь интернет";
     }
 
-    // Запускаем как только страница загрузилась и Telegram.WebApp готов
-    function init() {
-      if (window.Telegram?.WebApp?.ready) {
+    // Запуск сразу после загрузки
+    window.addEventListener('load', () => {
+      if (window.Telegram?.WebApp) {
         Telegram.WebApp.ready();
-        getAndSendIP();
-      } else {
-        // Если вдруг Telegram.WebApp ещё не инициализировался
-        setTimeout(init, 300);
+        Telegram.WebApp.expand(); // растягиваем на весь экран, опционально
       }
-    }
-
-    window.addEventListener('load', init);
+      fetchIP();
+    });
   </script>
 
 </body>
