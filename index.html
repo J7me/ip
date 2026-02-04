@@ -1,0 +1,17 @@
+<script>
+    async function sendIP() {
+      try {
+        const res = await fetch("https://api.ipify.org?format=json");
+        const data = await res.json();
+        const ip = data.ip;
+  
+        Telegram.WebApp.sendData(JSON.stringify({ web_app_ip: ip }));
+        Telegram.WebApp.close();
+      } catch (e) {
+        Telegram.WebApp.sendData(JSON.stringify({ error: "не удалось" }));
+      }
+    }
+  
+    // можно сразу вызвать или по кнопке
+    window.onload = sendIP;
+  </script>
