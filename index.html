@@ -18,18 +18,29 @@
       min-height: 100vh;
     }
     h1 { color: #0088cc; margin-bottom: 10px; }
-    #ip { 
-      font-size: 1.8em; 
-      font-weight: bold; 
-      background: white; 
-      padding: 15px; 
-      border-radius: 12px; 
+    #ip {
+      font-size: 1.8em;
+      font-weight: bold;
+      background: white;
+      padding: 15px;
+      border-radius: 12px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       margin: 20px auto;
       max-width: 300px;
     }
     #status { font-size: 1.1em; color: #555; }
+    #geo {
+      background: white;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin: 20px auto;
+      max-width: 300px;
+      text-align: left;
+      font-size: 0.9em;
+    }
     .error { color: #d32f2f; }
+    .geo-field { margin: 5px 0; }
   </style>
 </head>
 <body>
@@ -37,8 +48,30 @@
   <h1>Твой IP-адрес</h1>
   <div id="ip">Получаем...</div>
   <div id="status"></div>
+  <div id="geo"></div>
 
   <script>
+    async function fetchGeo(ip) {
+      const geoEl = document.getElementById('geo');
+      const status = document.getElementById('status');
+      try {
+        const res = await fetch(`https://ipinfo.io/${ip}/geo`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Не удалось получить гео-данные');
+        const data = await res.json();
+        geoEl.innerHTML = `
+          <div class="geo-field"><b>Город:</b> ${data.city || 'Неизвестно'}</div>
+          <div class="geo-field"><b>Регион:</b> ${data.region || 'Неизвестно'}</div>
+          <div class="geo-field"><b>Страна:</b> ${data.country || 'Неизвестно'}</div>
+          <div class="geo-field"><b>Координаты:</b> ${data.loc || 'Неизвестно'}</div>
+          <div class="geo-field"><b>Почта:</b> ${data.postal || 'Неизвестно'}</div>
+          <div class="geo-field"><b>Часовой пояс:</b> ${data.timezone || 'Неизвестно'}</div>
+          <div class="geo-field"><b>Провайдер:</b> ${data.org || 'Неизвестно'}</div>
+        `;
+      } catch (e) {
+        geoEl.innerHTML = '<div class="error">Не удалось получить гео-данные</div>';
+      }
+    }
+
     async function fetchIP() {
       const ipEl = document.getElementById('ip');
       const status = document.getElementById('status');
@@ -54,18 +87,26 @@
           const res = await fetch(url, { cache: 'no-store' });
           if (!res.ok) continue;
 
+          let ip;
           if (url.includes('ipify')) {
             const data = await res.json();
-            ipEl.textContent = data.ip;
+            ip = data.ip;
+            ipEl.textContent = ip;
           } else {
             // cloudflare trace
             const text = await res.text();
             const match = text.match(/ip=(.+)/);
-            if (match) ipEl.textContent = match[1];
+            if (match) {
+              ip = match[1];
+              ipEl.textContent = ip;
+            }
           }
 
-          status.textContent = "Готово ✓";
-          return; // успех — выходим
+          if (ip) {
+            status.textContent = "Готово ✓";
+            await fetchGeo(ip);
+            return; // успех — выходим
+          }
         } catch {}
       }
 
