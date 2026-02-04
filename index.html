@@ -1,48 +1,143 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Тест Mini App</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Мой IP и локация</title>
   <style>
-    body { font-family: sans-serif; text-align: center; padding: 40px; background: #f0f8ff; }
-    h1 { color: #006699; }
-    #status { font-size: 1.3em; margin: 30px; color: #333; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    h1 { color: #0088cc; margin-bottom: 10px; }
+    #result {
+      font-size: 1.1em;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      margin: 20px auto;
+      max-width: 360px;
+      text-align: left;
+    }
+    #result strong { color: #006699; }
+    #status { font-size: 1.1em; color: #555; margin-top: 10px; }
+    .spinner {
+      margin: 30px auto;
+      width: 50px;
+      height: 50px;
+      border: 5px solid #ddd;
+      border-top: 5px solid #0088cc;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .error { color: #d32f2f; }
+    .success { color: #2e7d32; }
   </style>
 </head>
 <body>
-  <h1>Тест отправки данных</h1>
-  <div id="status">Отправляем тестовые данные...</div>
+
+  <h1>Твой IP и локация</h1>
+  <div class="spinner" id="spinner"></div>
+  <div id="status">Получаем данные с ipinfo.io...</div>
+  <div id="result">Ожидание...</div>
 
   <script>
+    async function fetchLocation() {
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
+      const spinner = document.getElementById('spinner');
+
+      try {
+        // Используем /json — возвращает данные текущего IP пользователя
+        const url = "https://ipinfo.io/json";
+        // Альтернатива: если хочешь указать конкретный IP для теста: "https://ipinfo.io/185.22.207.155/geo"
+
+        status.textContent = "Запрос к ipinfo.io...";
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // таймаут 8 сек
+
+        const res = await fetch(url, {
+          cache: 'no-store',
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          throw new Error(`HTTP ошибка: ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        // Формируем красивый вывод (точно по структуре твоего примера)
+        let output = `
+          <strong>IP:</strong> ${data.ip || '—'}<br>
+          <strong>Hostname:</strong> ${data.hostname || '—'}<br>
+          <strong>Город:</strong> ${data.city || '—'}<br>
+          <strong>Регион:</strong> ${data.region || '—'}<br>
+          <strong>Страна:</strong> ${data.country || '—'}<br>
+          <strong>Координаты:</strong> ${data.loc || '—'}<br>
+          <strong>Организация:</strong> ${data.org || '—'}<br>
+          <strong>Почтовый индекс:</strong> ${data.postal || '—'}<br>
+          <strong>Часовой пояс:</strong> ${data.timezone || '—'}<br>
+        `;
+
+        result.innerHTML = output;
+        status.textContent = "Данные получены ✓";
+        status.classList.add('success');
+
+        // Отправляем в бот
+        Telegram.WebApp.sendData(JSON.stringify({
+          web_app_ip: data.ip,
+          hostname: data.hostname,
+          city: data.city,
+          region: data.region,
+          country: data.country,
+          loc: data.loc,
+          org: data.org,
+          postal: data.postal,
+          timezone: data.timezone
+        }));
+
+      } catch (err) {
+        console.error("Ошибка:", err);
+        status.textContent = "Ошибка: " + (err.message || "не удалось получить данные");
+        status.classList.add('error');
+        result.innerHTML = "Не удалось загрузить информацию";
+        Telegram.WebApp.sendData(JSON.stringify({ error: err.message || "ошибка запроса к ipinfo.io" }));
+      }
+
+      spinner.style.display = 'none';
+
+      // Закрываем Mini App через 4 секунды
+      setTimeout(() => {
+        if (window.Telegram?.WebApp) Telegram.WebApp.close();
+      }, 4000);
+    }
+
     function init() {
-      if (window.Telegram?.WebApp) {
+      if (window.Telegram?.WebApp?.ready) {
         Telegram.WebApp.ready();
         Telegram.WebApp.expand();
-
-        const testData = {
-          web_app_ip: "192.168.1.777",
-          city: "Тестовый город",
-          note: "Это тестовые данные — fetch отключён"
-        };
-
-        try {
-          Telegram.WebApp.sendData(JSON.stringify(testData));
-          document.getElementById('status').innerHTML = 
-            'Данные отправлены!<br>Закрываем через 2 сек...';
-          setTimeout(() => Telegram.WebApp.close(), 2000);
-        } catch (e) {
-          document.getElementById('status').innerHTML = 
-            'Ошибка sendData: ' + e.message;
-        }
+        fetchLocation();
       } else {
-        document.getElementById('status').innerHTML = 'Telegram.WebApp не найден — открой в Telegram';
+        setTimeout(init, 400);
       }
     }
 
-    window.addEventListener('load', () => {
-      setTimeout(init, 500); // даём время Telegram инициализироваться
-    });
+    window.addEventListener('load', init);
   </script>
+
 </body>
 </html>
