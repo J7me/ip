@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Мой IP</title>
+  <title>Мой IP и локация</title>
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -18,70 +18,113 @@
       min-height: 100vh;
     }
     h1 { color: #0088cc; margin-bottom: 10px; }
-    #ip { 
-      font-size: 1.8em; 
-      font-weight: bold; 
-      background: white; 
-      padding: 15px; 
-      border-radius: 12px; 
+    #result {
+      font-size: 1.1em;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       margin: 20px auto;
-      max-width: 300px;
+      max-width: 360px;
+      text-align: left;
     }
-    #status { font-size: 1.1em; color: #555; }
+    #result strong { color: #006699; }
+    #status { font-size: 1.1em; color: #555; margin-top: 10px; }
     .error { color: #d32f2f; }
+    .success { color: #2e7d32; }
   </style>
 </head>
 <body>
 
-  <h1>Твой IP-адрес</h1>
-  <div id="ip">Получаем...</div>
-  <div id="status"></div>
+  <h1>Твой IP и локация</h1>
+  <div id="result">Получаем данные...</div>
+  <div id="status">Подождите секунду</div>
 
   <script>
-    async function fetchIP() {
-      const ipEl = document.getElementById('ip');
-      const status = document.getElementById('status');
+    async function fetchLocation() {
+      const resultEl = document.getElementById('result');
+      const statusEl = document.getElementById('status');
 
-      const services = [
-        "https://api.ipify.org?format=json",
-        "https://api64.ipify.org?format=json",
-        "https://cloudflare.com/cdn-cgi/trace"
-      ];
+      try {
+        // Основной запрос к ipinfo.io (бесплатно, без токена — даёт город, регион, страну, координаты)
+        const res = await fetch('https://ipinfo.io/json', {
+          cache: 'no-store',
+          headers: { 'Accept': 'application/json' }
+        });
 
-      for (const url of services) {
-        try {
-          const res = await fetch(url, { cache: 'no-store' });
-          if (!res.ok) continue;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-          if (url.includes('ipify')) {
-            const data = await res.json();
-            ipEl.textContent = data.ip;
-          } else {
-            // cloudflare trace
-            const text = await res.text();
-            const match = text.match(/ip=(.+)/);
-            if (match) ipEl.textContent = match[1];
-          }
+        const data = await res.json();
 
-          status.textContent = "Готово ✓";
-          return; // успех — выходим
-        } catch {}
+        // Формируем красивый вывод
+        let output = `
+          <strong>IP:</strong> ${data.ip || '—'}<br>
+          <strong>Город:</strong> ${data.city || '—'}<br>
+          <strong>Регион:</strong> ${data.region || '—'} (${data.region_code || '—'})<br>
+          <strong>Страна:</strong> ${data.country || '—'} (${data.country_code || '—'})<br>
+        `;
+
+        if (data.loc) {
+          const [lat, lon] = data.loc.split(',');
+          output += `
+            <strong>Координаты:</strong> ${lat}, ${lon}<br>
+          `;
+        }
+
+        if (data.timezone) {
+          output += `<strong>Часовой пояс:</strong> ${data.timezone}<br>`;
+        }
+
+        if (data.org) {
+          output += `<strong>Провайдер:</strong> ${data.org}<br>`;
+        }
+
+        resultEl.innerHTML = output;
+        statusEl.textContent = "Данные получены ✓";
+        statusEl.classList.add('success');
+
+        // Отправляем всё в бот (можно расширить payload)
+        const payload = {
+          web_app_ip: data.ip,
+          city: data.city,
+          region: data.region,
+          country: data.country,
+          country_code: data.country_code,
+          loc: data.loc,
+          timezone: data.timezone,
+          org: data.org
+        };
+
+        Telegram.WebApp.sendData(JSON.stringify(payload));
+
+      } catch (err) {
+        console.error(err);
+        resultEl.innerHTML = "Не удалось получить данные :(";
+        resultEl.classList.add('error');
+        statusEl.textContent = "Ошибка: " + err.message;
+        statusEl.classList.add('error');
+
+        Telegram.WebApp.sendData(JSON.stringify({ error: err.message }));
       }
 
-      ipEl.textContent = "Не удалось получить";
-      ipEl.classList.add('error');
-      status.textContent = "Попробуй позже или проверь интернет";
+      // Опционально: закрываем Mini App через 4 секунды
+      setTimeout(() => {
+        Telegram.WebApp.close();
+      }, 4000);
     }
 
-    // Запуск сразу после загрузки
-    window.addEventListener('load', () => {
-      if (window.Telegram?.WebApp) {
+    // Запуск после загрузки и готовности Telegram Web App
+    function init() {
+      if (window.Telegram?.WebApp?.ready) {
         Telegram.WebApp.ready();
-        Telegram.WebApp.expand(); // растягиваем на весь экран, опционально
+        Telegram.WebApp.expand(); // растягиваем на весь экран
+        fetchLocation();
+      } else {
+        setTimeout(init, 300);
       }
-      fetchIP();
-    });
+    }
+
+    window.addEventListener('load', init);
   </script>
 
 </body>
