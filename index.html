@@ -97,8 +97,8 @@
         status.textContent = "Данные получены ✓";
         status.classList.add('success');
 
-        // Отправляем в бот
-        Telegram.WebApp.sendData(JSON.stringify({
+        // Отправляем данные в Telegram
+        const sendData = {
           web_app_ip: data.ip,
           hostname: data.hostname,
           city: data.city,
@@ -108,14 +108,28 @@
           org: data.org,
           postal: data.postal,
           timezone: data.timezone
-        }));
+        };
+
+        // Логируем данные перед отправкой
+        console.log("Данные, которые отправляются в Telegram:", sendData);
+
+        // Проверяем, существует ли объект Telegram.WebApp
+        if (window.Telegram?.WebApp) {
+          Telegram.WebApp.sendData(JSON.stringify(sendData));
+        } else {
+          console.error("Telegram WebApp не доступен!");
+        }
 
       } catch (err) {
         console.error("Ошибка:", err);
         status.textContent = "Ошибка: " + (err.message || "не удалось получить данные");
         status.classList.add('error');
         result.innerHTML = "Не удалось загрузить информацию";
-        Telegram.WebApp.sendData(JSON.stringify({ error: err.message || "ошибка запроса к ipinfo.io" }));
+
+        // Отправляем ошибку в Telegram
+        if (window.Telegram?.WebApp) {
+          Telegram.WebApp.sendData(JSON.stringify({ error: err.message || "ошибка запроса к ipinfo.io" }));
+        }
       }
 
       spinner.style.display = 'none';
