@@ -58,9 +58,7 @@
       const spinner = document.getElementById('spinner');
 
       try {
-        // Используем /json — возвращает данные текущего IP пользователя
         const url = "https://ipinfo.io/json";
-        // Альтернатива: если хочешь указать конкретный IP для теста: "https://ipinfo.io/185.22.207.155/geo"
 
         status.textContent = "Запрос к ipinfo.io...";
 
@@ -80,7 +78,7 @@
 
         const data = await res.json();
 
-        // Формируем красивый вывод (точно по структуре твоего примера)
+        // Формируем вывод
         let output = `
           <strong>IP:</strong> ${data.ip || '—'}<br>
           <strong>Hostname:</strong> ${data.hostname || '—'}<br>
@@ -113,7 +111,7 @@
         // Логируем данные перед отправкой
         console.log("Данные, которые отправляются в Telegram:", sendData);
 
-        // Проверяем, существует ли объект Telegram.WebApp
+        // Проверяем, доступен ли объект Telegram.WebApp
         if (window.Telegram?.WebApp) {
           Telegram.WebApp.sendData(JSON.stringify(sendData));
         } else {
@@ -146,7 +144,7 @@
         Telegram.WebApp.expand();
         fetchLocation();
       } else {
-        setTimeout(init, 400);
+        setTimeout(init, 400); // Пытаемся инициализировать WebApp до тех пор, пока он не станет доступен
       }
     }
 
